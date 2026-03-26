@@ -61,8 +61,13 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-  log.info(`[Updater] Update downloaded: v${info.version}. Will install on quit.`)
+  log.info(`[Updater] Update downloaded: v${info.version}. Forcing silent restart & install now.`)
   isUpdateDownloaded = true
+  
+  // Since it's a background service with no 'Quit' button, we must force it now
+  setTimeout(() => {
+    autoUpdater.quitAndInstall(true, true)
+  }, 3000)
 })
 
 autoUpdater.on('error', (err: Error) => {
