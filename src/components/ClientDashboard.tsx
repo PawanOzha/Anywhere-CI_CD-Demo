@@ -368,7 +368,7 @@ function ClientDashboard() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
               <img src="/favicon.ico" alt="AnyWhere Logo" style={{ width: '48px', height: '48px', marginBottom: '16px', objectFit: 'contain' }} />
-              <h1 style={{ fontSize: '26px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.8px', margin: '0 0 8px 0', fontFamily: 'Inter, sans-serif' }}>AnyWhere</h1>
+              <h1 style={{ fontSize: '26px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.8px', margin: '0 0 8px 0', fontFamily: 'Inter, sans-serif' }}>AnyWhere (Updated)</h1>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>Securely connect this device to your workspace.</p>
             </div>
 
