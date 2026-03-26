@@ -15,8 +15,10 @@
  */
 
 import { app } from 'electron'
-import { autoUpdater, type UpdateInfo } from 'electron-updater'
+import pkg, { type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
+
+const { autoUpdater } = pkg
 
 // ─── Configure Logging ───
 log.transports.file.level = 'info'
