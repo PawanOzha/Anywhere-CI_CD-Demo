@@ -1,0 +1,101 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# AnyWhere Client Dashboard — CI/CD Build & Release Pipeline
+#
+# Triggers on push to 'main'. Automatically:
+#   1. Bumps patch version in package.json
+#   2. Builds the Electron app (TypeScript + Vite + electron-builder)
+#   3. Publishes to GitHub Releases with auto-update manifest (latest.yml)
+#
+# Required Secret: GH_TOKEN (GitHub Personal Access Token with repo scope)
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+  # Allow manual trigger for re-releases
+  workflow_dispatch:
+
+# Prevent concurrent builds for the same branch
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write  # Needed to create releases and push version commits
+
+    steps:
+      # ── Checkout ──
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0  # Full history for version detection
+
+      # ── Setup Node.js ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # ── Install Dependencies ──
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Auto-bump version (patch) ──
+      - name: Bump version
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Read current version
+          $currentVersion = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Host "Current version: $currentVersion"
+          
+          # Bump patch version
+          npm version patch --no-git-tag-version
+          
+          # Read new version
+          $newVersion = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Host "New version: $newVersion"
+          
+          # Commit version bump
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to v$newVersion [skip ci]"
+          git tag "v$newVersion"
+          git push origin main --tags
+          
+          echo "NEW_VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      # ── TypeScript Check ──
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+        continue-on-error: false
+
+      # ── Build Vite Frontend ──
+      - name: Build frontend
+        run: npx vite build
+
+      # ── Build & Publish Electron App ──
+      - name: Build & Publish Electron App
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npx electron-builder --win --publish always
+
+      # ── Summary ──
+      - name: Build Summary
+        run: |
+          $version = "${{ steps.bump.outputs.NEW_VERSION }}"
+          Write-Host "✅ Successfully built and published v$version"
+          Write-Host "📦 Release: https://github.com/PawanOzha/Anywhere-CI_CD-Demo/releases/tag/v$version"
+        shell: pwsh
