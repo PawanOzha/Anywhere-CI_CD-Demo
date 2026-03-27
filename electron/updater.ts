@@ -1,17 +1,6 @@
 /**
- * Silent Auto-Updater Module
- *
- * Checks for updates from GitHub Releases, downloads in the background,
- * and installs silently on app quit. ZERO user interface shown.
- *
- * Edge cases handled:
- * - Network failures → retry on next interval
- * - Partial downloads → electron-updater handles resume/retry
- * - No internet on startup → graceful skip, retry later
- * - Update already downloaded → installs on quit
- * - App quit during download → resumes next launch
- * - Same version re-push → no-op (version comparison)
- * - Rate limiting → exponential backoff via interval
+ * Auto-updater: downloads in background; install uses the NSIS UI (not /S) so UAC and
+ * install paths succeed. Silent auto-install on quit is disabled — it often fails with no feedback.
  */
 
 import { app } from 'electron'
@@ -28,9 +17,9 @@ autoUpdater.logger = log
 // ─── Updater Configuration ───
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
-// Completely silent — no dialogs, no UI, no user interaction
 autoUpdater.autoDownload = true
-autoUpdater.autoInstallOnAppQuit = true
+// Default handler uses silent NSIS (/S) which frequently fails (UAC, AV); we install on quit via quitAndInstall(false, …) instead.
+autoUpdater.autoInstallOnAppQuit = false
 autoUpdater.autoRunAppAfterInstall = true
 
 // Disable download notifications in electron-builder (for some OS integrations)
@@ -47,6 +36,19 @@ const UPDATE_FEED_GENERIC_URL =
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 let isUpdateDownloaded = false
+
+/** Set when quitAndInstall is about to quit the app — lets main process allow that quit through. */
+let quittingForUpdateInstall = false
+
+// Runtime event from BaseUpdater; AppUpdaterEvents typings omit it.
+// @ts-expect-error — before-quit-for-update is emitted before quitAndInstall's app.quit()
+autoUpdater.on('before-quit-for-update', () => {
+  quittingForUpdateInstall = true
+})
+
+export function isQuittingForUpdateInstall(): boolean {
+  return quittingForUpdateInstall
+}
 
 export type UpdaterInitOptions = {
   /** Called when a new version has finished downloading (install on quit or via tray). */
@@ -77,7 +79,7 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-  log.info(`[Updater] Update downloaded: v${info.version}. Will install on next quit or via "Restart to apply update".`)
+  log.info(`[Updater] Update downloaded: v${info.version}. Quit the app or use tray "Restart to apply update" — installer will run with a normal window (UAC if needed).`)
   isUpdateDownloaded = true
   updaterOptions?.onUpdateDownloaded?.()
 })
@@ -133,13 +135,12 @@ export function stopAutoUpdater(): void {
 }
 
 /**
- * Force install a downloaded update immediately (silent).
- * Call this when quitting the app if you want immediate install.
+ * Quit and run the downloaded NSIS installer. isSilent=false so the wizard (and UAC) appear — silent /S often fails in place.
  */
 export function installUpdateNow(): void {
   if (isUpdateDownloaded) {
-    log.info('[Updater] Installing update now...')
-    autoUpdater.quitAndInstall(true, true) // isSilent=true, isForceRunAfter=true
+    log.info('[Updater] Installing update now (interactive installer)...')
+    autoUpdater.quitAndInstall(false, true)
   }
 }
 

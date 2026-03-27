@@ -4,7 +4,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import crypto from 'node:crypto'
 import WebSocket, { type RawData } from 'ws'
-import { initAutoUpdater, stopAutoUpdater, installUpdateNow, isUpdateReady } from './updater'
+import { initAutoUpdater, stopAutoUpdater, installUpdateNow, isUpdateReady, isQuittingForUpdateInstall } from './updater'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -364,6 +364,13 @@ function rebuildTrayMenu() {
     )
   }
   template.push({ label: 'Service Running (Protected)', enabled: false })
+  template.push({ type: 'separator' })
+  template.push({
+    label: 'Exit completely',
+    click: () => {
+      app.quit()
+    },
+  })
   tray.setContextMenu(Menu.buildFromTemplate(template))
 
   tray.setToolTip(
@@ -379,7 +386,7 @@ function notifyUpdateReady() {
   if (!Notification.isSupported()) return
   const n = new Notification({
     title: 'AnyWhere — Update ready',
-    body: 'Click here to restart and install. Or right-click the tray icon → Restart to apply update.',
+    body: 'Click here to quit and run the installer (you may see UAC). Or tray → Restart to apply update.',
   })
   n.on('click', () => installUpdateNow())
   n.show()
@@ -390,7 +397,18 @@ app.on('window-all-closed', () => {
   // Overridden: keep running in background even if all windows closed
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (isQuittingForUpdateInstall()) {
+    isQuitting = true
+    stopAutoUpdater()
+    return
+  }
+  // Update ready: run interactive installer on any full quit (tray Exit, shutdown path when graceful, etc.)
+  if (app.isPackaged && isUpdateReady()) {
+    e.preventDefault()
+    installUpdateNow()
+    return
+  }
   isQuitting = true
   stopAutoUpdater()
 })

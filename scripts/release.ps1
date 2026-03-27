@@ -9,13 +9,18 @@ function Write-Ok($msg)   { Write-Host "  ✅ $msg" -ForegroundColor Green }
 function Write-Fail($msg) { Write-Host "  ❌ $msg" -ForegroundColor Red; exit 1 }
 function Write-Info($msg)  { Write-Host "  i  $msg" -ForegroundColor Yellow }
 
-Write-Host "`n=== AnyWhere Client Build & Release Pipeline ===" -ForegroundColor Magenta
+Write-Host "`n=== AnyWhere Client Build / Release Pipeline ===" -ForegroundColor Magenta
 
 Write-Step "Checking GitHub token..."
 $ghToken = [System.Environment]::GetEnvironmentVariable('GH_TOKEN', 'User')
 if (-not $ghToken) { $ghToken = $env:GH_TOKEN }
 if (-not $ghToken) {
-    Write-Fail "GH_TOKEN not found. Create a classic PAT with `repo` scope, then either:`n  [System.Environment]::SetEnvironmentVariable('GH_TOKEN', 'ghp_...', 'User')`n  or in this shell: `$env:GH_TOKEN = 'ghp_...'`"
+    $msg = @'
+GH_TOKEN not found. Create a classic PAT with repo scope, then either:
+  [System.Environment]::SetEnvironmentVariable('GH_TOKEN', 'ghp_...', 'User')
+  or in this shell: $env:GH_TOKEN = 'ghp_...'
+'@
+    Write-Fail $msg
 }
 $env:GH_TOKEN = $ghToken
 Write-Ok "GitHub token found"
@@ -42,7 +47,7 @@ if ($BumpPatch) {
 
 $releaseVersion = (Get-Content package.json | ConvertFrom-Json).version
 
-Write-Step "Running production build & publishing to GitHub Releases..."
+Write-Step 'Running production build and publishing to GitHub Releases...'
 Write-Info "Artifacts: AnyWhere-Client-Windows-$releaseVersion-Setup.exe + latest.yml"
 try {
     npx tsc --noEmit 2>&1 | Out-Null
@@ -78,4 +83,6 @@ try {
 Write-Host "`n=== RELEASE COMPLETE ===" -ForegroundColor Green
 Write-Host "Version: v$releaseVersion" -ForegroundColor Green
 Write-Host "Repo: https://github.com/PawanOzha/Anywhere-CI_CD-Demo/releases" -ForegroundColor Green
-Write-Host "Installed clients poll GitHub and download updates in the background.`n" -ForegroundColor Green
+Write-Host ''
+Write-Host 'Installed clients poll GitHub and download updates in the background.' -ForegroundColor Green
+Write-Host ''
