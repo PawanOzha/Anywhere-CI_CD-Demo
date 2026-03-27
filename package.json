@@ -1,8 +1,12 @@
 {
   "name": "client-dashboard",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PawanOzha/Anywhere-CI_CD-Demo.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",

@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Required for Electron `file://` loads so `/favicon.ico` and assets resolve correctly.
+  base: './',
   plugins: [
     react(),
     electron({

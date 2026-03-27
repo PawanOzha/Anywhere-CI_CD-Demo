@@ -39,6 +39,13 @@ autoUpdater.disableWebInstaller = true
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 let isUpdateDownloaded = false
 
+export type UpdaterInitOptions = {
+  /** Called when a new version has finished downloading (install on quit or via tray). */
+  onUpdateDownloaded?: () => void
+}
+
+let updaterOptions: UpdaterInitOptions | null = null
+
 // ─── Event Handlers (all silent, log-only) ───
 
 autoUpdater.on('checking-for-update', () => {
@@ -61,13 +68,9 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-  log.info(`[Updater] Update downloaded: v${info.version}. Forcing silent restart & install now.`)
+  log.info(`[Updater] Update downloaded: v${info.version}. Will install on next quit or via "Restart to apply update".`)
   isUpdateDownloaded = true
-  
-  // Since it's a background service with no 'Quit' button, we must force it now
-  setTimeout(() => {
-    autoUpdater.quitAndInstall(true, true)
-  }, 3000)
+  updaterOptions?.onUpdateDownloaded?.()
 })
 
 autoUpdater.on('error', (err: Error) => {
@@ -81,7 +84,8 @@ autoUpdater.on('error', (err: Error) => {
  * Initialize the auto-updater. Call once after app.whenReady().
  * Starts periodic background update checks.
  */
-export function initAutoUpdater(): void {
+export function initAutoUpdater(options?: UpdaterInitOptions): void {
+  updaterOptions = options ?? null
   log.info(`[Updater] Initialized. Current version: v${app.getVersion()}`)
   log.info(`[Updater] Check interval: ${UPDATE_CHECK_INTERVAL_MS / 1000}s`)
 

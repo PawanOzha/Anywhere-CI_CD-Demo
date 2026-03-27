@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, Tray, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, Tray, Menu, type MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import crypto from 'node:crypto'
 import WebSocket, { type RawData } from 'ws'
-import { initAutoUpdater, stopAutoUpdater } from './updater'
+import { initAutoUpdater, stopAutoUpdater, installUpdateNow, isUpdateReady } from './updater'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -351,6 +351,22 @@ function sendToRenderer(channel: string, data: unknown) {
   }
 }
 
+function rebuildTrayMenu() {
+  if (!tray) return
+  const template: MenuItemConstructorOptions[] = [
+    { label: 'Show Dashboard', click: () => { win?.show(); win?.focus() } },
+    { type: 'separator' },
+  ]
+  if (isUpdateReady()) {
+    template.push(
+      { label: 'Restart to apply update', click: () => installUpdateNow() },
+      { type: 'separator' },
+    )
+  }
+  template.push({ label: 'Service Running (Protected)', enabled: false })
+  tray.setContextMenu(Menu.buildFromTemplate(template))
+}
+
 // ─── App Lifecycle ───
 app.on('window-all-closed', () => {
   // Overridden: keep running in background even if all windows closed
@@ -380,20 +396,14 @@ app.whenReady().then(() => {
   // Create System Tray
   tray = new Tray(path.join(process.env.VITE_PUBLIC!, 'favicon.ico'))
   tray.setToolTip('AnyWhere Client Service')
-  
-  const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show Dashboard', click: () => { win?.show(); win?.focus() } },
-    { type: 'separator' },
-    { label: 'Service Running (Protected)' }
-  ])
-  tray.setContextMenu(contextMenu)
-  
+
+  rebuildTrayMenu()
+
   tray.on('click', () => {
     win?.show()
     win?.focus()
   })
 
-  // ─── Silent Auto-Updater ───
-  // Checks GitHub Releases every 5 min, downloads silently, installs on quit
-  initAutoUpdater()
+  // ─── Auto-updater (GitHub Releases): background download; tray "Restart to apply update" or quit
+  initAutoUpdater({ onUpdateDownloaded: () => rebuildTrayMenu() })
 })

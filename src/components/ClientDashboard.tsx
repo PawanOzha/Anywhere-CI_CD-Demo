@@ -367,8 +367,15 @@ function ClientDashboard() {
         {!isRegistered ? (
           <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-              <img src="/favicon.ico" alt="AnyWhere Logo" style={{ width: '48px', height: '48px', marginBottom: '16px', objectFit: 'contain' }} />
-              <h1 style={{ fontSize: '26px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.8px', margin: '0 0 8px 0', fontFamily: 'Inter, sans-serif' }}>AnyWhere (Updated)</h1>
+              <img
+                src={`${import.meta.env.BASE_URL}favicon.ico`}
+                alt=""
+                role="presentation"
+                width={48}
+                height={48}
+                style={{ width: '48px', height: '48px', marginBottom: '16px', objectFit: 'contain' }}
+              />
+              <h1 style={{ fontSize: '26px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.8px', margin: '0 0 8px 0', fontFamily: 'Inter, sans-serif' }}>AnyWhere</h1>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>Securely connect this device to your workspace.</p>
             </div>
 
@@ -415,7 +422,14 @@ function ClientDashboard() {
           </div>
         ) : (
           <div className="card sharing-active" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center' }}>
-            <img src="/favicon.ico" alt="AnyWhere Logo" style={{ width: '56px', height: '56px', marginBottom: '20px', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,122,255,0.2))' }} />
+            <img
+              src={`${import.meta.env.BASE_URL}favicon.ico`}
+              alt=""
+              role="presentation"
+              width={56}
+              height={56}
+              style={{ width: '56px', height: '56px', marginBottom: '20px', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,122,255,0.2))' }}
+            />
             <h1 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.5px', margin: '0 0 8px 0' }}>Service Active</h1>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 32px 0' }}>Securely sharing as <strong>{fullName}</strong></p>
 
