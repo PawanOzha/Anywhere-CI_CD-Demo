@@ -36,6 +36,15 @@ autoUpdater.autoRunAppAfterInstall = true
 // Disable download notifications in electron-builder (for some OS integrations)
 autoUpdater.disableWebInstaller = true
 
+/**
+ * Generic feed base (must end with path segment so `latest.yml` resolves correctly).
+ * `provider: github` in app-update.yml uses `github.com/.../releases/latest`, which returns
+ * HTML — not JSON — so `JSON.parse` fails and updates never apply. This URL always serves
+ * the **latest** release's `latest.yml` and installer assets.
+ */
+const UPDATE_FEED_GENERIC_URL =
+  'https://github.com/PawanOzha/Anywhere-CI_CD-Demo/releases/latest/download/'
+
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 let isUpdateDownloaded = false
 
@@ -86,6 +95,10 @@ autoUpdater.on('error', (err: Error) => {
  */
 export function initAutoUpdater(options?: UpdaterInitOptions): void {
   updaterOptions = options ?? null
+
+  autoUpdater.setFeedURL(UPDATE_FEED_GENERIC_URL)
+  log.info(`[Updater] Using generic feed: ${UPDATE_FEED_GENERIC_URL}`)
+
   log.info(`[Updater] Initialized. Current version: v${app.getVersion()}`)
   log.info(`[Updater] Check interval: ${UPDATE_CHECK_INTERVAL_MS / 1000}s`)
 
