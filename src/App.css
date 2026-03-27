@@ -296,6 +296,75 @@
 }
 
 /* ─── Toast ─── */
+.toast-stack--top-center {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.toast-banner {
+  pointer-events: auto;
+  padding: 11px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  letter-spacing: -0.01em;
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: toastBannerInOut 4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.toast-banner--info {
+  border-color: rgba(0, 122, 255, 0.22);
+  box-shadow:
+    0 10px 40px rgba(0, 122, 255, 0.07),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.toast-banner--error {
+  border-color: rgba(255, 59, 48, 0.2);
+  color: #c62828;
+}
+
+.toast-banner--success {
+  border-color: rgba(48, 209, 88, 0.25);
+  color: #1b5e20;
+}
+
+/* Slides from above into center band, holds, then fades up and out */
+@keyframes toastBannerInOut {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.98);
+  }
+  11% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+}
+
 .toast-container {
   position: fixed;
   bottom: 20px;

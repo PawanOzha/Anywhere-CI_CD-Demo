@@ -12,6 +12,8 @@ interface Toast {
   id: number
   message: string
   type: 'error' | 'success' | 'info'
+  /** Default: bottom-right stack. `top-center` = banner below title bar. */
+  placement?: 'top-center'
 }
 
 function ClientDashboard() {
@@ -38,11 +40,25 @@ function ClientDashboard() {
   const toastIdRef = useRef(0)
 
   // ─── Toast notifications ───
-  const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-    const id = ++toastIdRef.current
-    setToasts(prev => [...prev.slice(-2), { id, message, type }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
-  }, [])
+  const addToast = useCallback(
+    (message: string, type: Toast['type'] = 'info', opts?: { placement?: 'top-center'; durationMs?: number }) => {
+      const id = ++toastIdRef.current
+      const placement = opts?.placement
+      const durationMs = opts?.durationMs ?? (placement === 'top-center' ? 4000 : 4000)
+
+      setToasts(prev => {
+        const bottom = prev.filter(t => t.placement !== 'top-center')
+        const top = prev.filter(t => t.placement === 'top-center')
+        if (placement === 'top-center') {
+          return [...bottom.slice(-2), { id, message, type, placement: 'top-center' }]
+        }
+        return [...bottom.slice(-2), { id, message, type }, ...top]
+      })
+
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), durationMs)
+    },
+    [],
+  )
 
   // ─── Fetch Screen Sources ───
   useEffect(() => {
@@ -342,7 +358,10 @@ function ClientDashboard() {
   }
 
   const handleClearIdentity = async () => {
-    addToast('Action forbidden: Contact your company admin to stop sharing.', 'error')
+    addToast('Remote sharing is managed by your organization. Ask IT to disconnect this device.', 'info', {
+      placement: 'top-center',
+      durationMs: 4000,
+    })
   }
 
   // Status pill was removed from header for minimalism
@@ -452,11 +471,26 @@ function ClientDashboard() {
         )}
       </div>
 
-      {/* Toasts */}
+      {/* Top-center banner (e.g. Stop Service) */}
+      <div className="toast-stack toast-stack--top-center" aria-live="polite">
+        {toasts
+          .filter(t => t.placement === 'top-center')
+          .map(t => (
+            <div key={t.id} className={`toast-banner toast-banner--${t.type}`} role="status">
+              {t.message}
+            </div>
+          ))}
+      </div>
+
+      {/* Corner toasts */}
       <div className="toast-container">
-        {toasts.map(t => (
-          <div key={t.id} className={`toast toast-${t.type}`}>{t.message}</div>
-        ))}
+        {toasts
+          .filter(t => t.placement !== 'top-center')
+          .map(t => (
+            <div key={t.id} className={`toast toast-${t.type}`}>
+              {t.message}
+            </div>
+          ))}
       </div>
     </div>
   )
