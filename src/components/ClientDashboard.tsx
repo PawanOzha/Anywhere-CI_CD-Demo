@@ -20,7 +20,11 @@ function ClientDashboard() {
   const [orgName, setOrgName] = useState('')
   const [fullName, setFullName] = useState('')
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
+  /** False until getClientIdentity() finishes — avoids flashing the enroll UI on refresh when already enrolled. */
+  const [identityReady, setIdentityReady] = useState(false)
   const [isRegistered, setIsRegistered] = useState(false)
+  /** Set when user completes Secure Connect — used so refresh/re-auth does not show "Connected as …" again. */
+  const pendingEnrollSuccessToastRef = useRef(false)
   const [connectedAgents, setConnectedAgents] = useState<Record<string, string>>({}) // socketId -> name
   const [reconnectInfo, setReconnectInfo] = useState<string | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -98,8 +102,13 @@ function ClientDashboard() {
         setStatus('sharing')
         const client = isRecord(data.client) ? data.client : null
         const name = typeof client?.fullName === 'string' ? client.fullName : fullNameRef.current
-        addToast(`Connected as "${name}"`, 'success')
+        if (pendingEnrollSuccessToastRef.current) {
+          pendingEnrollSuccessToastRef.current = false
+          addToast(`Connected as "${name}"`, 'success')
+        }
       } else {
+        setIsRegistered(false)
+        pendingEnrollSuccessToastRef.current = false
         addToast(typeof data.message === 'string' ? data.message : 'Enrollment failed', 'error')
       }
     })
@@ -147,9 +156,11 @@ function ClientDashboard() {
         if (id?.orgName && id?.fullName) {
           setOrgName(id.orgName)
           setFullName(id.fullName)
+          setIsRegistered(true)
         }
       })
       .catch(() => {})
+      .finally(() => setIdentityReady(true))
 
     return () => {
       cleanupFnsRef.current.forEach(fn => fn())
@@ -349,6 +360,7 @@ function ClientDashboard() {
     if (!res?.success) {
       addToast(res?.message || 'Could not save identity', 'error')
     } else {
+      pendingEnrollSuccessToastRef.current = true
       addToast('Service started in background. Check System Tray.', 'success')
       // Small delay so they see the toast before the window hides
       setTimeout(() => {
@@ -383,7 +395,11 @@ function ClientDashboard() {
 
       {/* Main Content */}
       <div className="main-content">
-        {!isRegistered ? (
+        {!identityReady ? (
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>Loading…</p>
+          </div>
+        ) : !isRegistered ? (
           <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center', marginBottom: '40px' }}>
               <img

@@ -74,6 +74,16 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  // Packaged: avoid full reload (F5 / Ctrl+R) — it tears down WebRTC and feels like "back to login".
+  if (app.isPackaged) {
+    win.webContents.on('before-input-event', (_event, input) => {
+      if (input.type !== 'keyDown') return
+      if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
+        _event.preventDefault()
+      }
+    })
+  }
 }
 
 function getIdentityPath() {
