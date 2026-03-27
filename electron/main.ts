@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, Tray, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, Tray, Menu, Notification, type MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -365,6 +365,24 @@ function rebuildTrayMenu() {
   }
   template.push({ label: 'Service Running (Protected)', enabled: false })
   tray.setContextMenu(Menu.buildFromTemplate(template))
+
+  tray.setToolTip(
+    isUpdateReady()
+      ? 'AnyWhere — Update downloaded. Right-click → Restart to apply update (or click the notification).'
+      : 'AnyWhere Client — running in background',
+  )
+}
+
+/** Windows toasts + tray tip: the app stays alive in the tray, so install only runs after quit or Restart to apply update. */
+function notifyUpdateReady() {
+  rebuildTrayMenu()
+  if (!Notification.isSupported()) return
+  const n = new Notification({
+    title: 'AnyWhere — Update ready',
+    body: 'Click here to restart and install. Or right-click the tray icon → Restart to apply update.',
+  })
+  n.on('click', () => installUpdateNow())
+  n.show()
 }
 
 // ─── App Lifecycle ───
@@ -391,11 +409,15 @@ app.setLoginItemSettings({
 })
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.anywhere.client')
+  }
+
   createWindow()
 
   // Create System Tray
   tray = new Tray(path.join(process.env.VITE_PUBLIC!, 'favicon.ico'))
-  tray.setToolTip('AnyWhere Client Service')
+  tray.setToolTip('AnyWhere Client — running in background')
 
   rebuildTrayMenu()
 
@@ -404,6 +426,6 @@ app.whenReady().then(() => {
     win?.focus()
   })
 
-  // ─── Auto-updater (GitHub Releases): background download; tray "Restart to apply update" or quit
-  initAutoUpdater({ onUpdateDownloaded: () => rebuildTrayMenu() })
+  // Download runs anytime; install needs process restart — tray menu or notification click.
+  initAutoUpdater({ onUpdateDownloaded: () => notifyUpdateReady() })
 })
