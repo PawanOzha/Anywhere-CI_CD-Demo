@@ -13,12 +13,14 @@ interface ElectronAPI {
   clearClientIdentity: () => Promise<{ success: boolean }>;
   sendSignaling: (data: unknown) => void;
   getSocketId: () => Promise<string | null>;
+  postponeAutoUpdate: (minutes?: number) => Promise<{ ok: true; postponedMinutes: number }>;
   onConnectionStatus: (callback: (data: unknown) => void) => () => void;
   onClientAuthResponse: (callback: (data: unknown) => void) => () => void;
   onAgentConnectRequest: (callback: (data: unknown) => void) => () => void;
   onSignalingMessage: (callback: (data: unknown) => void) => () => void;
   onAgentDisconnected: (callback: (data: unknown) => void) => () => void;
   onServerError: (callback: (data: unknown) => void) => () => void;
+  onIceServers: (callback: (data: unknown) => void) => () => void;
 }
 
 declare global {

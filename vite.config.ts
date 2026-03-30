@@ -1,10 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const signalingWss =
+    env.ANYWHERE_SIGNALING_WSS ||
+    env.VITE_ANYWHERE_SIGNALING_WSS ||
+    'wss://stunning-octo-umbrella-production-0f1e.up.railway.app'
+
+  return {
   // Required for Electron `file://` loads so `/favicon.ico` and assets resolve correctly.
   base: './',
   plugins: [
@@ -14,6 +21,9 @@ export default defineConfig({
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
         vite: {
+          define: {
+            __ANYWHERE_SIGNALING_WSS__: JSON.stringify(signalingWss),
+          },
           build: {
             rollupOptions: {
               // Keep Node-side ws as runtime dependency; avoids optional native module
@@ -37,4 +47,5 @@ export default defineConfig({
         : {},
     }),
   ],
+  }
 })

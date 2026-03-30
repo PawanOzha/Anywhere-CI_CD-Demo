@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Get my socket ID
   getSocketId: () => ipcRenderer.invoke('get-socket-id'),
 
+  /** Push back automatic NSIS install (default 60 minutes). Packaged + auto-install only. */
+  postponeAutoUpdate: (minutes?: number) =>
+    ipcRenderer.invoke('postpone-auto-update', minutes) as Promise<{ ok: true; postponedMinutes: number }>,
+
   // ─── Event Listeners ───
   onConnectionStatus: (callback: (data: unknown) => void) => {
     const handler = (_event: unknown, data: unknown) => callback(data)
@@ -61,5 +65,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on('server-error', handler)
     return () => ipcRenderer.removeListener('server-error', handler)
+  },
+
+  onIceServers: (callback: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data)
+    ipcRenderer.on('ice-servers', handler)
+    return () => ipcRenderer.removeListener('ice-servers', handler)
   },
 })

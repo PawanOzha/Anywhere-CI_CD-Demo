@@ -4,7 +4,15 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import crypto from 'node:crypto'
 import WebSocket, { type RawData } from 'ws'
-import { initAutoUpdater, stopAutoUpdater, installUpdateNow, isUpdateReady, isQuittingForUpdateInstall } from './updater'
+import {
+  initAutoUpdater,
+  stopAutoUpdater,
+  installUpdateNow,
+  isUpdateReady,
+  isQuittingForUpdateInstall,
+  postponeAutoInstall,
+  isAutoInstallEnabled,
+} from './updater'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -16,11 +24,13 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 // ─── Signaling Server Config ───
-// Public tunnel (ngrok HTTPS → local signaling server). Use wss:// for ngrok free HTTPS domains.
-const SIGNALING_URL = 'wss://stunning-octo-umbrella-production.up.railway.app'
+// Injected from .env: ANYWHERE_SIGNALING_WSS or VITE_ANYWHERE_SIGNALING_WSS (see vite.config.ts).
+declare const __ANYWHERE_SIGNALING_WSS__: string
+const SIGNALING_URL = __ANYWHERE_SIGNALING_WSS__
 const HEARTBEAT_INTERVAL = 3000
 const RECONNECT_BASE_DELAY = 1000
 const RECONNECT_MAX_DELAY = 30000
+const BAD_ENDPOINT_RETRY_MS = 45000
 
 let win: BrowserWindow | null
 let tray: Tray | null = null
@@ -31,6 +41,8 @@ let reconnectAttempt = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let isManualDisconnect = false
 let mySocketId: string | null = null
+let reconnectDelayFloorMs = 0
+let pendingSignalingUnreachable: { httpStatus: number; detail: string } | null = null
 
 type ClientIdentity = {
   deviceId: string
@@ -151,6 +163,7 @@ function connectToSignaling() {
   }
 
   isManualDisconnect = false
+  console.log('📡 Signaling URL:', SIGNALING_URL)
   sendToRenderer('connection-status', { status: 'connecting' })
 
   try {
@@ -160,13 +173,26 @@ function connectToSignaling() {
   } catch (err: unknown) {
     const e = err as { message?: string }
     console.error('❌ WebSocket creation failed:', e?.message || err)
-    scheduleReconnect()
+    scheduleReconnect({ usePendingUnreachable: false })
     return
   }
+
+  ws.on('unexpected-response', (_req, res) => {
+    const code = res.statusCode ?? 0
+    reconnectDelayFloorMs = BAD_ENDPOINT_RETRY_MS
+    const detail =
+      code === 404
+        ? 'The signaling URL returned HTTP 404 — nothing is listening. Fix Railway deployment / public URL, then set client-dashboard/.env: ANYWHERE_SIGNALING_WSS=wss://YOUR-HOST and restart npm run dev.'
+        : `Signaling handshake failed (HTTP ${code}). Check ANYWHERE_SIGNALING_WSS.`
+    pendingSignalingUnreachable = { httpStatus: code, detail }
+    console.error(`❌ Signaling handshake failed: HTTP ${code} — ${SIGNALING_URL}`)
+  })
 
   ws.on('open', async () => {
     console.log('✅ Connected to signaling server')
     reconnectAttempt = 0
+    reconnectDelayFloorMs = 0
+    pendingSignalingUnreachable = null
     sendToRenderer('connection-status', { status: 'connected' })
     startHeartbeat()
 
@@ -191,8 +217,7 @@ function connectToSignaling() {
     mySocketId = null
 
     if (!isManualDisconnect) {
-      sendToRenderer('connection-status', { status: 'reconnecting', attempt: reconnectAttempt })
-      scheduleReconnect()
+      scheduleReconnect({ usePendingUnreachable: true })
     } else {
       sendToRenderer('connection-status', { status: 'disconnected' })
     }
@@ -212,6 +237,9 @@ function handleSignalingMessage(msg: unknown) {
   switch (msg.type) {
     case 'welcome':
       mySocketId = typeof msg.socketId === 'string' ? msg.socketId : null
+      if (Array.isArray(msg.iceServers)) {
+        sendToRenderer('ice-servers', { iceServers: msg.iceServers })
+      }
       break
 
     case 'client-auth-response':
@@ -266,16 +294,30 @@ function stopHeartbeat() {
 }
 
 // ─── Reconnect ───
-function scheduleReconnect() {
+function scheduleReconnect(opts?: { usePendingUnreachable?: boolean }) {
   if (isManualDisconnect) {
     return
   }
 
-  const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempt), RECONNECT_MAX_DELAY)
+  const exp = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempt), RECONNECT_MAX_DELAY)
+  const delay = Math.max(reconnectDelayFloorMs, exp)
   reconnectAttempt++
 
+  if (opts?.usePendingUnreachable && pendingSignalingUnreachable) {
+    const p = pendingSignalingUnreachable
+    pendingSignalingUnreachable = null
+    sendToRenderer('connection-status', {
+      status: 'signaling-unreachable',
+      httpStatus: p.httpStatus,
+      detail: p.detail,
+      attempt: reconnectAttempt,
+      nextRetryMs: delay,
+    })
+  } else {
+    sendToRenderer('connection-status', { status: 'reconnecting', attempt: reconnectAttempt, nextRetryMs: delay })
+  }
+
   console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempt})`)
-  sendToRenderer('connection-status', { status: 'reconnecting', attempt: reconnectAttempt, nextRetryMs: delay })
 
   reconnectTimer = setTimeout(() => {
     connectToSignaling()
@@ -318,8 +360,18 @@ ipcMain.on('disconnect-signaling', () => {
   isManualDisconnect = true
   if (reconnectTimer) clearTimeout(reconnectTimer)
   if (ws) {
-    ws.send(JSON.stringify({ type: 'disconnect' }))
-    ws.close()
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'disconnect' }))
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      ws.close()
+    } catch {
+      // ignore
+    }
   }
 })
 
@@ -369,9 +421,17 @@ function rebuildTrayMenu() {
   ]
   if (isUpdateReady()) {
     template.push(
-      { label: 'Restart to apply update', click: () => installUpdateNow() },
-      { type: 'separator' },
+      { label: 'Restart to apply update now', click: () => installUpdateNow() },
     )
+    if (isAutoInstallEnabled()) {
+      template.push({
+        label: 'Postpone automatic install (1 hour)',
+        click: () => {
+          postponeAutoInstall(60, () => rebuildTrayMenu())
+        },
+      })
+    }
+    template.push({ type: 'separator' })
   }
   template.push({ label: 'Service Running (Protected)', enabled: false })
   template.push({ type: 'separator' })
@@ -385,21 +445,34 @@ function rebuildTrayMenu() {
 
   tray.setToolTip(
     isUpdateReady()
-      ? 'AnyWhere — Update downloaded. Right-click → Restart to apply update (or click the notification).'
+      ? isAutoInstallEnabled()
+        ? 'AnyWhere — Update downloaded; will install automatically after grace period (or restart now from menu).'
+        : 'AnyWhere — Update downloaded. Tray → Restart to apply update.'
       : 'AnyWhere Client — running in background',
   )
 }
 
-/** Windows toasts + tray tip: the app stays alive in the tray, so install only runs after quit or Restart to apply update. */
 function notifyUpdateReady() {
   rebuildTrayMenu()
   if (!Notification.isSupported()) return
+  const auto = isAutoInstallEnabled()
   const n = new Notification({
     title: 'AnyWhere — Update ready',
-    body: 'Click here to quit and run the installer (you may see UAC). Or tray → Restart to apply update.',
+    body: auto
+      ? 'This device will run the installer automatically after a short delay (see tray to restart now or postpone). UAC may appear.'
+      : 'Click here to quit and run the installer (you may see UAC). Or tray → Restart to apply update.',
   })
   n.on('click', () => installUpdateNow())
   n.show()
+}
+
+function notifyAutoInstallSoon(secondsLeft: number) {
+  rebuildTrayMenu()
+  if (!Notification.isSupported()) return
+  new Notification({
+    title: 'AnyWhere — Installing update soon',
+    body: `The app will close and run the installer in about ${secondsLeft} seconds. Save work if needed.`,
+  }).show()
 }
 
 // ─── App Lifecycle ───
@@ -454,6 +527,14 @@ app.whenReady().then(() => {
     win?.focus()
   })
 
-  // Download runs anytime; install needs process restart — tray menu or notification click.
-  initAutoUpdater({ onUpdateDownloaded: () => notifyUpdateReady() })
+  initAutoUpdater({
+    onUpdateDownloaded: () => notifyUpdateReady(),
+    onAutoInstallWarning: (sec) => notifyAutoInstallSoon(sec),
+  })
+})
+
+ipcMain.handle('postpone-auto-update', (_event, minutes?: number) => {
+  const m = typeof minutes === 'number' && minutes > 0 ? minutes : 60
+  postponeAutoInstall(m, () => rebuildTrayMenu())
+  return { ok: true as const, postponedMinutes: m }
 })

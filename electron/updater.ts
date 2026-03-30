@@ -1,11 +1,21 @@
 /**
- * Auto-updater: downloads in background; install uses the NSIS UI (not /S) so UAC and
- * install paths succeed. Silent auto-install on quit is disabled — it often fails with no feedback.
+ * Auto-updater (packaged app only):
+ * - Checks GitHub for a newer version on a timer + shortly after launch.
+ * - Downloads updates in the background (autoDownload).
+ * - After download, update-worker quits and runs the NSIS installer (interactive, not silent)
+ *   so the app upgrades to the newer version automatically.
+ * autoInstallOnAppQuit stays false — we use quitAndInstall(false, …) from the worker instead.
  */
 
 import { app } from 'electron'
 import pkg, { type UpdateInfo } from 'electron-updater'
 import log from 'electron-log'
+import {
+  initUpdateWorker,
+  scheduleAutoInstallAfterGrace,
+  stopUpdateWorker,
+  cancelAutoInstallForImmediateInstall,
+} from './update-worker'
 
 const { autoUpdater } = pkg
 
@@ -15,7 +25,11 @@ log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB max log file
 autoUpdater.logger = log
 
 // ─── Updater Configuration ───
-const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+function updateCheckIntervalMs(): number {
+  const raw = parseInt(process.env.ANYWHERE_UPDATE_CHECK_INTERVAL_MS || '', 10)
+  if (Number.isFinite(raw) && raw >= 60_000) return raw
+  return 5 * 60 * 1000 // 5 minutes
+}
 
 autoUpdater.autoDownload = true
 // Default handler uses silent NSIS (/S) which frequently fails (UAC, AV); we install on quit via quitAndInstall(false, …) instead.
@@ -53,6 +67,8 @@ export function isQuittingForUpdateInstall(): boolean {
 export type UpdaterInitOptions = {
   /** Called when a new version has finished downloading (install on quit or via tray). */
   onUpdateDownloaded?: () => void
+  /** ~30s before auto-install runs (if ANYWHERE_UPDATE_AUTO_INSTALL is on). */
+  onAutoInstallWarning?: (secondsLeft: number) => void
 }
 
 let updaterOptions: UpdaterInitOptions | null = null
@@ -79,9 +95,10 @@ autoUpdater.on('download-progress', (progress) => {
 })
 
 autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
-  log.info(`[Updater] Update downloaded: v${info.version}. Quit the app or use tray "Restart to apply update" — installer will run with a normal window (UAC if needed).`)
+  log.info(`[Updater] Update downloaded: v${info.version}. Auto-install scheduled if enabled; or use tray "Restart to apply update".`)
   isUpdateDownloaded = true
   updaterOptions?.onUpdateDownloaded?.()
+  scheduleAutoInstallAfterGrace(updaterOptions?.onAutoInstallWarning)
 })
 
 autoUpdater.on('error', (err: Error) => {
@@ -97,12 +114,14 @@ autoUpdater.on('error', (err: Error) => {
  */
 export function initAutoUpdater(options?: UpdaterInitOptions): void {
   updaterOptions = options ?? null
+  initUpdateWorker(() => installUpdateNow())
 
   autoUpdater.setFeedURL(UPDATE_FEED_GENERIC_URL)
   log.info(`[Updater] Using generic feed: ${UPDATE_FEED_GENERIC_URL}`)
 
   log.info(`[Updater] Initialized. Current version: v${app.getVersion()}`)
-  log.info(`[Updater] Check interval: ${UPDATE_CHECK_INTERVAL_MS / 1000}s`)
+  const intervalMs = updateCheckIntervalMs()
+  log.info(`[Updater] Check interval: ${intervalMs / 1000}s`)
 
   // First check after a short delay (let app fully start)
   setTimeout(() => {
@@ -112,7 +131,7 @@ export function initAutoUpdater(options?: UpdaterInitOptions): void {
   // Periodic checks
   updateCheckTimer = setInterval(() => {
     checkForUpdatesQuietly()
-  }, UPDATE_CHECK_INTERVAL_MS)
+  }, intervalMs)
 }
 
 /**
@@ -128,6 +147,7 @@ function checkForUpdatesQuietly(): void {
  * Stop the update checker (cleanup on app quit).
  */
 export function stopAutoUpdater(): void {
+  stopUpdateWorker()
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer)
     updateCheckTimer = null
@@ -139,6 +159,7 @@ export function stopAutoUpdater(): void {
  */
 export function installUpdateNow(): void {
   if (isUpdateDownloaded) {
+    cancelAutoInstallForImmediateInstall()
     log.info('[Updater] Installing update now (interactive installer)...')
     autoUpdater.quitAndInstall(false, true)
   }
@@ -150,3 +171,5 @@ export function installUpdateNow(): void {
 export function isUpdateReady(): boolean {
   return isUpdateDownloaded
 }
+
+export { postponeAutoInstall, isAutoInstallEnabled } from './update-worker'

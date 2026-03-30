@@ -1,12 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] },
+]
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
 
-type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'online' | 'sharing' | 'reconnecting' | 'failed'
+function normalizeIceServer(v: unknown): RTCIceServer | null {
+  if (!isRecord(v)) return null
+  const rawUrls = v.urls
+  const urls = Array.isArray(rawUrls)
+    ? rawUrls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+    : (typeof rawUrls === 'string' && rawUrls.trim().length > 0 ? [rawUrls] : [])
+  if (urls.length === 0) return null
+  const out: RTCIceServer = { urls }
+  if (typeof v.username === 'string' && v.username.trim()) out.username = v.username.trim()
+  if (typeof v.credential === 'string' && v.credential.trim()) out.credential = v.credential.trim()
+  return out
+}
+
+type ConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'online'
+  | 'sharing'
+  | 'reconnecting'
+  | 'failed'
+  | 'signaling-unreachable'
 
 interface Toast {
   id: number
@@ -27,13 +50,18 @@ function ClientDashboard() {
   const pendingEnrollSuccessToastRef = useRef(false)
   const [connectedAgents, setConnectedAgents] = useState<Record<string, string>>({}) // socketId -> name
   const [reconnectInfo, setReconnectInfo] = useState<string | null>(null)
+  const [signalingUnreachableDetail, setSignalingUnreachableDetail] = useState<string | null>(null)
+  const [signalingNextRetryMs, setSignalingNextRetryMs] = useState<number | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
   
   const [, setSources] = useState<{id: string, name: string}[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState<string>('')
 
   const fullNameRef = useRef(fullName)
   useEffect(() => { fullNameRef.current = fullName }, [fullName])
+  const iceServersRef = useRef<RTCIceServer[]>(DEFAULT_ICE_SERVERS)
+  useEffect(() => { iceServersRef.current = iceServers }, [iceServers])
   const isRegisteredRef = useRef(isRegistered)
   useEffect(() => { isRegisteredRef.current = isRegistered }, [isRegistered])
 
@@ -84,6 +112,16 @@ function ClientDashboard() {
     const unsub1 = api.onConnectionStatus((data: unknown) => {
       if (!isRecord(data) || typeof data.status !== 'string') return
       setStatus(data.status as ConnectionStatus)
+      if (data.status === 'signaling-unreachable') {
+        setSignalingUnreachableDetail(typeof data.detail === 'string' ? data.detail : null)
+        setSignalingNextRetryMs(typeof data.nextRetryMs === 'number' ? data.nextRetryMs : null)
+        const code = typeof data.httpStatus === 'number' ? `HTTP ${data.httpStatus}` : 'error'
+        addToast(`Cannot reach signaling server (${code}). Set ANYWHERE_SIGNALING_WSS in .env.`, 'error')
+      } else if (data.status === 'connected') {
+        setSignalingUnreachableDetail(null)
+        setSignalingNextRetryMs(null)
+      }
+
       if (data.status === 'reconnecting') {
         const attempt = typeof data.attempt === 'number' ? data.attempt : '?'
         setReconnectInfo(`Reconnecting... (attempt ${attempt})`)
@@ -147,7 +185,17 @@ function ClientDashboard() {
       addToast(msg, 'error')
     })
 
-    cleanupFnsRef.current = [unsub1, unsub2, unsub3, unsub4, unsub5, unsub6]
+    const unsub7 = api.onIceServers((data: unknown) => {
+      if (!isRecord(data) || !Array.isArray(data.iceServers)) return
+      const normalized = data.iceServers
+        .map(normalizeIceServer)
+        .filter((s): s is RTCIceServer => s !== null)
+      if (normalized.length > 0) {
+        setIceServers(normalized)
+      }
+    })
+
+    cleanupFnsRef.current = [unsub1, unsub2, unsub3, unsub4, unsub5, unsub6, unsub7]
 
     // Auto-connect to signaling server on mount
     api.connectSignaling()
@@ -216,7 +264,7 @@ function ClientDashboard() {
     }
 
     // Create peer connection
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current })
     peerConnectionsRef.current[agentSocketId] = pc
     iceCandidateQueuesRef.current[agentSocketId] = []
 
@@ -415,6 +463,28 @@ function ClientDashboard() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {signalingUnreachableDetail && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(220, 53, 69, 0.12)',
+                    border: '1px solid rgba(220, 53, 69, 0.35)',
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <strong style={{ display: 'block', marginBottom: 6 }}>Cannot connect to signaling server</strong>
+                  {signalingUnreachableDetail}
+                  {signalingNextRetryMs != null && (
+                    <span style={{ display: 'block', marginTop: 8, opacity: 0.85 }}>
+                      Next retry in ~{Math.round(signalingNextRetryMs / 1000)}s.
+                    </span>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Organization ID</label>
                 <input
