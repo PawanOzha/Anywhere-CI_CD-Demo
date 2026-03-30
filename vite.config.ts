@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => {
     env.VITE_ANYWHERE_SIGNALING_WSS ||
     'wss://stunning-octo-umbrella-production-0f1e.up.railway.app'
 
+  /** OTA updates without GitHub: HTTPS folder containing latest.yml + Setup.exe + .blockmap */
+  const updateBaseUrl =
+    env.ANYWHERE_UPDATE_BASE_URL || env.VITE_ANYWHERE_UPDATE_BASE_URL || ''
+
   return {
   // Required for Electron `file://` loads so `/favicon.ico` and assets resolve correctly.
   base: './',
@@ -23,6 +27,7 @@ export default defineConfig(({ mode }) => {
         vite: {
           define: {
             __ANYWHERE_SIGNALING_WSS__: JSON.stringify(signalingWss),
+            __ANYWHERE_UPDATE_BASE_URL__: JSON.stringify(updateBaseUrl),
           },
           build: {
             rollupOptions: {

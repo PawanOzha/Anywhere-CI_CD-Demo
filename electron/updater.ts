@@ -1,10 +1,17 @@
 /**
  * Auto-updater (packaged app only):
- * - Checks GitHub for a newer version on a timer + shortly after launch.
+ * - Checks a generic HTTPS feed for `latest.yml` on a timer + shortly after launch.
  * - Downloads updates in the background (autoDownload).
- * - After download, update-worker quits and runs the NSIS installer (interactive, not silent)
- *   so the app upgrades to the newer version automatically.
- * autoInstallOnAppQuit stays false — we use quitAndInstall(false, …) from the worker instead.
+ * - After download, update-worker quits and runs the NSIS installer (interactive, not silent).
+ *
+ * Feed URL (first non-empty wins):
+ * 1) process.env.ANYWHERE_UPDATE_BASE_URL — runtime override (e.g. Windows env / IT deploy).
+ * 2) Build-time .env: ANYWHERE_UPDATE_BASE_URL or VITE_ANYWHERE_UPDATE_BASE_URL (vite define).
+ * 3) Fallback: GitHub `releases/latest/download` (needs a working GitHub release; fails if billing locked).
+ *
+ * Self-hosted OTA: upload the contents of `release/<version>/` to one public HTTPS folder:
+ *   latest.yml, AnyWhere-Client-Windows-*-Setup.exe, *.blockmap
+ * Set ANYWHERE_UPDATE_BASE_URL=https://your-domain.com/path/to/that/folder (no trailing slash required).
  */
 
 import { app } from 'electron'
@@ -18,6 +25,8 @@ import {
 } from './update-worker'
 
 const { autoUpdater } = pkg
+
+declare const __ANYWHERE_UPDATE_BASE_URL__: string
 
 // ─── Configure Logging ───
 log.transports.file.level = 'info'
@@ -39,14 +48,18 @@ autoUpdater.autoRunAppAfterInstall = true
 // Disable download notifications in electron-builder (for some OS integrations)
 autoUpdater.disableWebInstaller = true
 
-/**
- * Generic feed base (must end with path segment so `latest.yml` resolves correctly).
- * `provider: github` in app-update.yml uses `github.com/.../releases/latest`, which returns
- * HTML — not JSON — so `JSON.parse` fails and updates never apply. This URL always serves
- * the **latest** release's `latest.yml` and installer assets.
- */
-const UPDATE_FEED_GENERIC_URL =
-  'https://github.com/PawanOzha/Anywhere-CI_CD-Demo/releases/latest/download/'
+/** Used only when no custom ANYWHERE_UPDATE_BASE_URL is set (build or runtime). */
+const GITHUB_LATEST_DOWNLOAD_BASE =
+  'https://github.com/PawanOzha/Anywhere-CI_CD-Demo/releases/latest/download'
+
+function resolveGenericFeedBaseUrl(): string {
+  const runtime = process.env.ANYWHERE_UPDATE_BASE_URL?.trim()
+  if (runtime) return runtime.replace(/\/+$/, '')
+  const builtIn =
+    typeof __ANYWHERE_UPDATE_BASE_URL__ === 'string' ? __ANYWHERE_UPDATE_BASE_URL__.trim() : ''
+  if (builtIn) return builtIn.replace(/\/+$/, '')
+  return GITHUB_LATEST_DOWNLOAD_BASE
+}
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 let isUpdateDownloaded = false
@@ -116,8 +129,9 @@ export function initAutoUpdater(options?: UpdaterInitOptions): void {
   updaterOptions = options ?? null
   initUpdateWorker(() => installUpdateNow())
 
-  autoUpdater.setFeedURL(UPDATE_FEED_GENERIC_URL)
-  log.info(`[Updater] Using generic feed: ${UPDATE_FEED_GENERIC_URL}`)
+  const feedBase = resolveGenericFeedBaseUrl()
+  autoUpdater.setFeedURL({ provider: 'generic', url: feedBase })
+  log.info(`[Updater] Generic provider, base URL: ${feedBase}`)
 
   log.info(`[Updater] Initialized. Current version: v${app.getVersion()}`)
   const intervalMs = updateCheckIntervalMs()
