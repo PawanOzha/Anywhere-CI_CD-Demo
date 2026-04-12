@@ -1,20 +1,26 @@
 {
   "name": "client-dashboard",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.27",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/PawanOzha/Anywhere-CI_CD-Demo.git"
   },
   "scripts": {
+    "prebuild": "node scripts/copy-rust-validator.mjs",
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "cross-env ANYWHERE_REQUIRE_RUST_VALIDATOR=1 tsc && vite build && electron-builder -c electron-builder.json5",
+    "build:local": "cross-env ANYWHERE_NO_OTA=1 npm run build",
+    "copy-validator": "node scripts/copy-rust-validator.mjs",
+    "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "release": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File scripts/release.ps1"
+    "release": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "r2:publish": "node scripts/r2-release.mjs"
   },
   "dependencies": {
+    "better-sqlite3": "^11.7.0",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "react": "^18.2.0",
@@ -22,12 +28,16 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.940.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-react": "^4.2.1",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.3.1",
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8.57.0",
@@ -38,5 +48,27 @@
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5"
   },
-  "main": "dist-electron/main.js"
+  "main": "dist-electron/main.js",
+  "build": {
+    "appId": "com.anywhere.client",
+    "productName": "AnyWhere Client",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "public/favicon.ico"
+    },
+    "mac": {
+      "icon": "public/favicon.ico"
+    },
+    "extraResources": [
+      {
+        "from": "resources/rust-validator",
+        "to": "rust-validator",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  }
 }

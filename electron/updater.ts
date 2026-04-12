@@ -41,7 +41,7 @@ function updateCheckIntervalMs(): number {
 }
 
 autoUpdater.autoDownload = true
-// Default handler uses silent NSIS (/S) which frequently fails (UAC, AV); we install on quit via quitAndInstall(false, …) instead.
+// We control install timing ourselves; downloaded updates are installed via quitAndInstall.
 autoUpdater.autoInstallOnAppQuit = false
 autoUpdater.autoRunAppAfterInstall = true
 
@@ -75,6 +75,10 @@ autoUpdater.on('before-quit-for-update', () => {
 
 export function isQuittingForUpdateInstall(): boolean {
   return quittingForUpdateInstall
+}
+
+export function markQuittingForUpdateInstall(): void {
+  quittingForUpdateInstall = true
 }
 
 export type UpdaterInitOptions = {
@@ -169,13 +173,16 @@ export function stopAutoUpdater(): void {
 }
 
 /**
- * Quit and run the downloaded NSIS installer. isSilent=false so the wizard (and UAC) appear — silent /S often fails in place.
+ * Quit and run the downloaded NSIS installer in unattended mode.
+ * This enables zero-click updates after the app is already installed.
  */
 export function installUpdateNow(): void {
   if (isUpdateDownloaded) {
+    // Let main-process close handlers know this quit is intentional for update install.
+    markQuittingForUpdateInstall()
     cancelAutoInstallForImmediateInstall()
-    log.info('[Updater] Installing update now (interactive installer)...')
-    autoUpdater.quitAndInstall(false, true)
+    log.info('[Updater] Installing update now (silent quit + install + relaunch)...')
+    autoUpdater.quitAndInstall(true, true)
   }
 }
 

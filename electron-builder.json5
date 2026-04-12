@@ -3,7 +3,24 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.anywhere.client",
   "asar": true,
+  "npmRebuild": false,
   "productName": "AnyWhere-Client",
+  "extraResources": [
+    {
+      "from": "resources/rust-validator",
+      "to": "rust-validator",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "../Extentions/anywhere-tab-observer",
+      "to": "browser-extension/anywhere-tab-observer",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
   "publish": [
     {
       "provider": "github",
@@ -27,6 +44,7 @@
   },
   "win": {
     "icon": "public/favicon.ico",
+    "legalTrademarks": "AnyWhere",
     "signAndEditExecutable": false,
     "target": [
       {
@@ -42,7 +60,12 @@
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "displayLanguageSelector": true,
+    "installerIcon": "public/favicon.ico",
+    "uninstallerIcon": "public/favicon.ico",
+    "installerHeaderIcon": "public/favicon.ico",
+    "artifactName": "${productName}-Windows-${version}-Installer.${ext}"
   },
   "linux": {
     "target": [

@@ -9,7 +9,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   winIsMaximized: () => ipcRenderer.invoke('win-is-maximized'),
 
   // Screen sources
-  getScreenSources: () => ipcRenderer.invoke('get-screen-sources'),
+  getScreenSources: (opts?: { kind?: 'screen' | 'window' | 'all' }) => ipcRenderer.invoke('get-screen-sources', opts),
+  setPreferredScreenSource: (sourceId: string | null) =>
+    ipcRenderer.invoke('set-preferred-screen-source', sourceId) as Promise<{ ok: boolean }>,
+  setPreferredScreenSelection: (data: { sourceId?: string | null; sourceIndex?: number | null }) =>
+    ipcRenderer.invoke('set-preferred-screen-selection', data) as Promise<{ ok: boolean }>,
+
+  getScreenShareConsent: () => ipcRenderer.invoke('get-screen-share-consent') as Promise<{ granted: boolean }>,
+  setScreenShareConsent: (granted: boolean) => ipcRenderer.invoke('set-screen-share-consent', granted) as Promise<{ ok: boolean }>,
+  bringWindowToFront: () => ipcRenderer.invoke('bring-window-to-front') as Promise<{ ok: boolean }>,
 
   // Signaling connection
   connectSignaling: () => ipcRenderer.send('connect-signaling'),
@@ -17,6 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Client identity / enrollment
   getClientIdentity: () => ipcRenderer.invoke('get-client-identity'),
+  /** Same as disk-backed identity after main startup — use to skip enrollment UI before WS connects. */
+  getPersistedIdentity: () =>
+    ipcRenderer.invoke('get-persisted-identity') as Promise<{ deviceId: string; orgName: string; fullName: string } | null>,
   enrollClient: (data: { orgName: string; fullName: string }) => ipcRenderer.invoke('enroll-client', data),
   clearClientIdentity: () => ipcRenderer.invoke('clear-client-identity'),
 
@@ -41,6 +52,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on('client-auth-response', handler)
     return () => ipcRenderer.removeListener('client-auth-response', handler)
+  },
+
+  /** Fired when server returns CLIENT_DISABLED — main already cleared identity and autostart. */
+  onClientDisabledLogout: (callback: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data)
+    ipcRenderer.on('client-disabled-logout', handler)
+    return () => ipcRenderer.removeListener('client-disabled-logout', handler)
   },
 
   onAgentConnectRequest: (callback: (data: unknown) => void) => {
@@ -71,5 +89,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: unknown, data: unknown) => callback(data)
     ipcRenderer.on('ice-servers', handler)
     return () => ipcRenderer.removeListener('ice-servers', handler)
+  },
+
+  /** Live tab list from the AnyWhere browser extension (local ingest). */
+  onBrowserTabsLive: (callback: (data: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data)
+    ipcRenderer.on('browser-tabs-live', handler)
+    return () => ipcRenderer.removeListener('browser-tabs-live', handler)
   },
 })
